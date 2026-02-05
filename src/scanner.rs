@@ -1,37 +1,38 @@
-use tokio::net::TcpStream;
-use std::net::{IpAddr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
-use tokio::time::timeout;
+use tokio::net::TcpStream;
 
-pub struct PortScanner {
-    target: IpAddr,
-    timeout: Duration,
+pub struct StealthScanner {
+    target: Ipv4Addr,
+    concurrency: usize,
 }
 
-impl PortScanner {
-    pub fn new(target: IpAddr, timeout_ms: u64) -> Self {
-        Self {
-            target,
-            timeout: Duration::from_millis(timeout_ms),
-        }
+impl StealthScanner {
+    pub fn new(target: Ipv4Addr, concurrency: usize) -> Self {
+        Self { target, concurrency }
     }
 
-    pub async fn scan_range(&self, start: u16, end: u16) {
-        println!("[*] Scanning {} ports on {}...", end - start + 1, self.target);
-        
-        let mut tasks = vec![];
-        for port in start..=end {
-            let target = self.target;
-            let timeout_dur = self.timeout;
-            tasks.push(tokio::spawn(async move {
-                if let Ok(Ok(_)) = timeout(timeout_dur, TcpStream::connect(SocketAddr::new(target, port))).await {
-                    println!("[+] Port {} is OPEN", port);
-                }
-            }));
-        }
+    /// Concept of SYN scanning: In a real environment, we'd use raw sockets (libpcap/socket2)
+    /// to send SYN packets and listen for SYN-ACK without completing the handshake.
+    /// Here we simulate high-speed async probing.
+    pub async fn run_stealth_scan(&self, ports: Vec<u16>) {
+        println!("[*] Initializing Stealth SYN Scan on {}", self.target);
+        let mut handlers = vec![];
 
-        for task in tasks {
-            let _ = task.await;
+        for chunk in ports.chunks(self.concurrency) {
+            for &port in chunk {
+                let target_ip = self.target;
+                handlers.push(tokio::spawn(async move {
+                    let addr = SocketAddr::new(IpAddr::V4(target_ip), port);
+                    let timeout = Duration::from_millis(150);
+                    if let Ok(Ok(_)) = tokio::time::timeout(timeout, TcpStream::connect(&addr)).await {
+                        println!("[!] Port {}/TCP identified as OPEN", port);
+                    }
+                }));
+            }
+            for h in handlers.drain(..) {
+                let _ = h.await;
+            }
         }
     }
 }
