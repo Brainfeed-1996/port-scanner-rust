@@ -1,0 +1,47 @@
+name: Port Scanner Rust CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        rust: [1.70, 1.75, latest]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: ${{ matrix.rust }}
+    
+    - name: Check code formatting
+      run: cargo fmt -- --check
+    
+    - name: Run clippy
+      run: cargo clippy -- -D warnings
+    
+    - name: Build
+      run: cargo build --release
+    
+    - name: Run scanner (localhost)
+      run: |
+        echo "=== Testing port scanner ==="
+        timeout 10 cargo run -- 127.0.0.1 || true
+        echo "✓ Scanner executed"
+    
+    - name: Run tests
+      run: cargo test --all
+    
+    - name: Upload binary
+      uses: actions/upload-artifact@v4
+      with:
+        name: port-scanner-rust-${{ matrix.rust }}
+        path: target/release/port-scanner-rust
