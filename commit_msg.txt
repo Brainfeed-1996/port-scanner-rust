@@ -1,0 +1,1 @@
+feat: add CI workflow for Rust port scanner

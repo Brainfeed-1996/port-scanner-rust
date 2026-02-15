@@ -1,18 +1,119 @@
+# Architecture - Port Scanner Rust
 
-# System Architecture
+## System Overview
 
-## Overview
-This system utilizes a micro-kernel architecture designed for high availability and fault tolerance. The core components are decoupled using an event-driven message bus, allowing for independent scaling of subsystems.
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Port Scanner Rust v2.0                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │                     CLI Parser                            │    │
+│  │  - Argument parsing (clap/std::env)                      │    │
+│  │  - Validation                                           │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                           │                                      │
+│                           ▼                                      │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │                   Async Scanner                         │    │
+│  │  - Tokio runtime                                        │    │
+│  │  - Semaphore concurrency control                         │    │
+│  │  - Port pool management                                 │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                           │                                      │
+│                           ▼                                      │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │              Port Probing Engine                         │    │
+│  │  - TCP socket connections                               │    │
+│  │  - Timeout handling                                     │    │
+│  │  - Service detection                                    │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                           │                                      │
+│                           ▼                                      │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │                   Output Formatter                       │    │
+│  │  - Colorized terminal output                            │    │
+│  │  - JSON export (optional)                               │    │
+│  │  - Summary statistics                                   │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
 
-## Key Components
+## Components
 
-1.  **Core Engine**: Handles business logic with O(log n) complexity for critical paths.
-2.  **Data Layer**: Abstracts storage implementations (SQL/NoSQL) behind a unified repository pattern.
-3.  **Security Module**: Implements Zero Trust principles with continuous verification.
+### Main Entry Point (`src/main.rs`)
 
-## Performance
-- **Throughput**: Optimized for >10k RPS on standard hardware.
-- **Latency**: P99 < 50ms via aggressive caching strategies (LRU/LFU).
+**Responsibilities:**
+- Parse command-line arguments
+- Initialize tokio runtime
+- Display banner and usage
+- Coordinate scan execution
 
-## Deployment
-Dockerized containers orchestrated via Kubernetes for elastic scaling based on CPU/Memory metrics.
+### Scan Engine
+
+```rust
+struct ScanResult {
+    port: u16,
+    is_open: bool,
+    service: Option<String>,
+}
+```
+
+### Concurrency Control
+
+Uses Tokio's Semaphore for controlled parallelism:
+
+```rust
+let semaphore = Semaphore::new(concurrency);
+let _permit = semaphore.acquire().await;
+```
+
+### Timeout Handling
+
+```rust
+tokio::time::timeout(timeout, async move {
+    // Connection attempt
+}).await
+```
+
+## Data Flow
+
+```
+CLI Arguments
+    │
+    ▼
+Validate & Parse
+    │
+    ▼
+Create Tokio Runtime
+    │
+    ▼
+Spawn Scan Tasks (semaphore-controlled)
+    │
+    ▼
+TCP Connect with Timeout
+    │
+    ▼
+Collect Results
+    │
+    ▼
+Format & Display Output
+```
+
+## File Structure
+
+```
+port-scanner-rust/
+├── src/
+│   ├── main.rs              # Entry point + CLI
+│   ├── scanner.rs           # Core scanning logic
+│   ├── report.rs           # Report generation
+│   └── utils/
+│       └── async_runtime.rs # Tokio runtime config
+├── Cargo.toml
+├── README.md
+├── ARCHITECTURE.md
+├── FEATURES.md
+└── USAGE.md
+```
